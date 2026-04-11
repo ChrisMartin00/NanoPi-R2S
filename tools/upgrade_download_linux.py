@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import configparser
-import re
 import shutil
 import subprocess
 import sys
@@ -96,36 +95,14 @@ def probe_serial(port: str, baud: int, timeout: float) -> bool:
     return False
 
 
-def probe_usb(vidpid: str) -> bool:
-    if not re.fullmatch(r"[0-9a-fA-F]{4}:[0-9a-fA-F]{4}", vidpid):
-        raise RuntimeError("Invalid VID:PID format, expected like 1782:4d00")
-    lsusb = shutil.which("lsusb")
-    if lsusb is None:
-        raise RuntimeError("lsusb not found; install usbutils")
-    cp = subprocess.run([lsusb], capture_output=True, text=True, check=True)
-    pat = vidpid.lower()
-    for line in cp.stdout.splitlines():
-        if pat in line.lower():
-            print(f"USB device found: {line}")
-            return True
-    return False
-
-
 def build_external_flash_cmd(
     flasher: str,
-    port: Optional[str],
+    port: str,
     baud: int,
-    usb_id: Optional[str],
     entries: Iterable[PartitionEntry],
     skip_ids: set[str],
 ) -> List[str]:
-    cmd: List[str] = [flasher]
-    if usb_id and not port:
-        cmd.extend(["--usb", usb_id])
-    elif port:
-        cmd.extend(["--port", port, "--baud", str(baud)])
-    else:
-        raise RuntimeError("Missing transport target: provide serial port or USB VID:PID")
+    cmd: List[str] = [flasher, "--port", port, "--baud", str(baud)]
     for e in entries:
         if not e.enabled or not e.path or e.file_id in skip_ids:
             continue
@@ -138,7 +115,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--ini", default="Bin/UpgradeDownload.ini", help="Path to UpgradeDownload.ini")
     ap.add_argument("--show-plan", action="store_true", help="Print parsed flash plan and exit")
     ap.add_argument("--probe", metavar="/dev/ttyUSB0", help="Probe ROM handshake on serial port")
-    ap.add_argument("--probe-usb", metavar="VID:PID", help="Probe for USB device, e.g. 1782:4d00")
     ap.add_argument("--timeout", type=float, default=1.0, help="Probe timeout seconds")
     ap.add_argument("--extract-pac", metavar="file.pac", help="Extract PAC using external extractor")
     ap.add_argument("--extractor", default="7z", help="Extractor command (default: 7z)")
@@ -171,20 +147,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("ROM sync probe: no response")
             return 2
 
-    if ns.probe_usb:
-        ok = probe_usb(ns.probe_usb)
-        if ok:
-            print("USB probe: OK")
-        else:
-            print("USB probe: not found")
-            return 2
-
     if ns.flash:
-        if not ns.probe and not ns.probe_usb:
-            raise RuntimeError("--flash requires --probe PORT or --probe-usb VID:PID")
+        if not ns.probe:
+            raise RuntimeError("--flash requires --probe PORT to avoid wrong-device flashing")
         flasher = shutil.which(ns.flasher) or ns.flasher
         skip_ids = {s.strip() for s in ns.skip.split(",") if s.strip()}
-        cmd = build_external_flash_cmd(flasher, ns.probe, baud, ns.probe_usb, entries, skip_ids)
+        cmd = build_external_flash_cmd(flasher, ns.probe, baud, entries, skip_ids)
         print("Launching external flasher:")
         print(" ".join(cmd))
         subprocess.run(cmd, check=True)
