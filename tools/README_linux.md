@@ -20,7 +20,6 @@ python3 -m pip install --user -r requirements-linux.txt
 # alternatively run directly from repo:
 python3 tools/upgrade_download_linux.py --show-plan
 python3 tools/upgrade_download_linux.py --probe /dev/ttyUSB0 --timeout 2
-python3 tools/upgrade_download_linux.py --probe-usb 1782:4d00
 python3 tools/upgrade_download_linux.py --probe /dev/ttyUSB0 --flash --flasher spd_dump
 ```
 
